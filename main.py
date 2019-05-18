@@ -18,6 +18,7 @@ class Tetrimino:
         self.height = 0
         self.image = None
         self.blocks = []
+        self.moves = 0
         self.setup(self.name)
 
     def setup(self, name):
@@ -115,6 +116,7 @@ class Tetrimino:
 class Tetris:
     def __init__(self):
         self.screenrect = get_screenrect()
+        self.state = None
         self.block_names = [
             "t",
             "straight",
@@ -126,7 +128,7 @@ class Tetris:
         ]
         self.tiles_wide = 10
         self.tiles_high = 20
-        self.grid_size = 24
+        self.grid_size = 28
         self.padding = 16
         self.play_rect = pygame.Rect(
             self.padding,
@@ -134,15 +136,11 @@ class Tetris:
             self.tiles_wide * self.grid_size,
             self.tiles_high * self.grid_size,
         )
-
-        self.grid = Grid(self.generate_blank_grid())
-        self.image = pygame.Surface(
-            (self.play_rect.width, self.play_rect.height), pygame.SRCALPHA
-        )
+        self.grid = None
+        self.image = None
         self.background_image = None
-        self.blocks = []
-        self.tick_count = 0
-        self.piece_count = 0
+        self.blocks = None
+        self.stats = None
         self.move_counter = 0
         self.move_timer = 300
         self.block_colors = itertools.cycle(
@@ -155,30 +153,80 @@ class Tetris:
                 (255, 200, 0),
             ]
         )
+        self.current_block = None
+        self.next_block = None
+        self.game_over_image = None
+        self.start_game()
+
+    def start_game(self):
+        self.image = pygame.Surface(
+            (self.play_rect.width, self.play_rect.height), pygame.SRCALPHA
+        )
+        self.grid = Grid(self.generate_blank_grid())
         self.current_block = Tetrimino(
             random.choice(self.block_names), next(self.block_colors), self.grid_size
         )
         self.next_block = Tetrimino(
             random.choice(self.block_names), next(self.block_colors), self.grid_size
         )
+
+        self.blocks = []
+        self.stats = {"ticks": 0, "pieces_spawned": 0, "lines": 0}
+
+        self.render_images()
         self.render_grid()
         self.render_ui()
 
+        self.state = "playing"
+
+    def render_images(self):
+        self.game_over_image = pygame.Surface((self.screenrect.width, self.screenrect.height), pygame.SRCALPHA)
+        self.game_over_image.fill((0, 0, 0))
+        game_over_text = text_surface("Game Over", font_size=64)
+        press_space_text = text_surface("Press Space to Continue", font_size=36)
+        go_text_rect = game_over_text.get_rect()
+        ps_text_rect = press_space_text.get_rect()
+        gx = (self.screenrect.width - go_text_rect.width) // 2
+        gy = 75
+
+        px = (self.screenrect.width - ps_text_rect.width) // 2
+        py = 275
+        self.game_over_image.blit(game_over_text, (gx, gy))
+        self.game_over_image.blit(press_space_text, (px, py))
+
     def render_ui(self):
         self.render_background()
-        self.render_next_block()
-        tick_text = text_surface("Ticks: {}".format(self.tick_count), font_size=36)
-        piece_text = text_surface("Pieces: {}".format(self.piece_count), font_size=36)
-        self.background_image.blit(
-            tick_text, (self.play_rect.right + self.padding, 400)
-        )
-        self.background_image.blit(
-            piece_text,
-            (
-                self.play_rect.right + self.padding,
-                400 + tick_text.get_rect().height + self.padding,
-            ),
-        )
+        if self.state == "playing":
+            self.render_next_block()
+            tick_text = text_surface(
+                "Ticks: {}".format(self.stats["ticks"]), font_size=36
+            )
+            piece_text = text_surface(
+                "Pieces: {}".format(self.stats["pieces_spawned"]), font_size=36
+            )
+            lines_text = text_surface("Lines: {}".format(self.stats["lines"]), font_size=36)
+            self.background_image.blit(
+                tick_text, (self.play_rect.right + self.padding, 400)
+            )
+            self.background_image.blit(
+                piece_text,
+                (
+                    self.play_rect.right + self.padding,
+                    400 + tick_text.get_rect().height + self.padding,
+                ),
+            )
+            self.background_image.blit(
+                lines_text,
+                (
+                    self.play_rect.right + self.padding,
+                    400 + tick_text.get_rect().height * 2 + self.padding * 2,
+                ),
+            )
+        elif self.state == "game_over":
+            game_over_text = text_surface(
+                "Game Over", font_size=36, color=(255, 255, 255)
+            )
+            self.background_image.blit(game_over_text, (100, 32))
 
     def pixel_to_tile(self, pos):
         if type(pos) == int:
@@ -209,19 +257,27 @@ class Tetris:
         return result
 
     def tick(self):
-        self.tick_count += 1
+        self.stats["ticks"] += 1
         if self.current_block:
             self.current_block.y += self.current_block.size
             can_move = self.check_block(self.current_block)
             if not can_move:
+                if self.current_block.moves == 0:
+                    self.game_over()
                 self.spawn_new_block()
+            else:
+                self.current_block.moves += 1
             self.render_ui()
 
+    def game_over(self):
+        self.state = "game_over"
+
     def spawn_new_block(self):
-        self.piece_count += 1
+        self.stats["pieces_spawned"] += 1
         blocks = self.current_block.get_blocks(parent_offset=True)
         for block in blocks:
             gx, gy = self.pixel_to_tile((block[0].x, block[0].y))
+            print(gx, gy)
             if not self.grid.set_cell(gx, gy, block[1]):
                 print("Unable to set cell: ", gx, gy, block[1])
         self.current_block = self.next_block
@@ -244,7 +300,6 @@ class Tetris:
             for row_index in full_rows:
                 del self.grid.grid[row_index]
                 new_row = list([None for x in range(self.grid.width)])
-                print(new_row)
                 self.grid.grid.insert(0, new_row)
             self.update_grid()
 
@@ -282,10 +337,11 @@ class Tetris:
         return True
 
     def update(self, dt):
-        self.move_counter += dt
-        if self.move_counter > self.move_timer:
-            self.move_counter = 0
-            self.tick()
+        if self.state == "playing":
+            self.move_counter += dt
+            if self.move_counter > self.move_timer:
+                self.move_counter = 0
+                self.tick()
 
     def render_grid(self):
         for y in range(self.grid.height):
@@ -313,43 +369,51 @@ class Tetris:
                         self.image.blit(txt, (r.x + 6, r.y + 6))
 
     def draw(self, canvas):
-        canvas.blit(self.background_image, (0, 0))
-        pygame.draw.rect(canvas, (25, 25, 25), self.play_rect)
-        canvas.blit(self.image, (16, 16))
-        if self.current_block:
-            self.current_block.draw(canvas)
+        if self.state == "playing":
+            canvas.blit(self.background_image, (0, 0))
+            pygame.draw.rect(canvas, (25, 25, 25), self.play_rect)
+            canvas.blit(self.image, (16, 16))
+            if self.current_block:
+                self.current_block.draw(canvas)
+        elif self.state == "game_over":
+            canvas.blit(self.game_over_image, (0, 0))
 
     def random_color(self):
         return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
     def handle_event(self, event):
-        if self.current_block is None:
-            return
-        if event.type == pygame.KEYUP:
-            test_block = None
-            if event.key == pygame.K_RIGHT:
-                test_block = self.current_block.copy(
-                    x=self.current_block.x + self.current_block.size,
-                    y=self.current_block.y,
-                )
-            elif event.key == pygame.K_LEFT:
-                test_block = self.current_block.copy(
-                    x=self.current_block.x - self.current_block.size,
-                    y=self.current_block.y,
-                )
-            elif event.key == pygame.K_DOWN:
-                test_block = self.current_block.copy(
-                    x=self.current_block.x,
-                    y=self.current_block.y + self.current_block.size,
-                )
-
-            if test_block and self.check_block(test_block):
-                self.current_block.x = test_block.x
-                self.current_block.y = test_block.y
+        if self.state == "playing":
+            if self.current_block is None:
                 return
+            if event.type == pygame.KEYUP:
+                test_block = None
+                if event.key == pygame.K_RIGHT:
+                    test_block = self.current_block.copy(
+                        x=self.current_block.x + self.current_block.size,
+                        y=self.current_block.y,
+                    )
+                elif event.key == pygame.K_LEFT:
+                    test_block = self.current_block.copy(
+                        x=self.current_block.x - self.current_block.size,
+                        y=self.current_block.y,
+                    )
+                elif event.key == pygame.K_DOWN:
+                    test_block = self.current_block.copy(
+                        x=self.current_block.x,
+                        y=self.current_block.y + self.current_block.size,
+                    )
 
-            if event.key == pygame.K_UP:
-                self.current_block.rotate("right")
+                if test_block and self.check_block(test_block):
+                    self.current_block.x = test_block.x
+                    self.current_block.y = test_block.y
+                    return
+
+                if event.key == pygame.K_UP:
+                    self.current_block.rotate("right")
+        elif self.state == "game_over":
+            if event.type == pygame.KEYUP:
+                if event.key == pygame.K_SPACE:
+                    self.start_game()
 
 
 if __name__ == "__main__":
