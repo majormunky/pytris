@@ -301,6 +301,7 @@ class Tetris:
                 del self.grid.grid[row_index]
                 new_row = list([None for x in range(self.grid.width)])
                 self.grid.grid.insert(0, new_row)
+                self.stats["lines"] += 1
             self.update_grid()
 
     def print_grid(self):
