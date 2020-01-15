@@ -117,15 +117,15 @@ class Tetris:
     def __init__(self):
         self.screenrect = get_screenrect()
         self.state = None
-        self.block_data = {
-            "t": (255, 0, 200),
-            "straight": (255, 0, 0),
-            "normal_l": (0, 255, 0),
-            "backwards_l": (0, 0, 255),
-            "normal_zigzag": (0, 255, 200),
-            "backwards_zigzag": (255, 200, 0),
-            "square": (255, 100, 100),
-        }
+        self.block_names = [
+            "t",
+            "straight",
+            "normal_l",
+            "backwards_l",
+            "normal_zigzag",
+            "backwards_zigzag",
+            "square",
+        ]
         self.tiles_wide = 10
         self.tiles_high = 20
         self.grid_size = 28
@@ -143,23 +143,32 @@ class Tetris:
         self.stats = None
         self.move_counter = 0
         self.move_timer = 300
+        self.block_colors = itertools.cycle(
+            [
+                (255, 0, 200),
+                (255, 0, 0),
+                (0, 255, 0),
+                (0, 0, 255),
+                (0, 255, 200),
+                (255, 200, 0),
+            ]
+        )
         self.current_block = None
         self.next_block = None
         self.game_over_image = None
         self.start_game()
-
-    def get_random_piece(self):
-        data_key = random.choice(list(self.block_data.keys()))
-        data = self.block_data[data_key]
-        return Tetrimino(data_key, data, self.grid_size)
 
     def start_game(self):
         self.image = pygame.Surface(
             (self.play_rect.width, self.play_rect.height), pygame.SRCALPHA
         )
         self.grid = Grid(self.generate_blank_grid())
-        self.current_block = self.get_random_piece()
-        self.next_block = self.get_random_piece()
+        self.current_block = Tetrimino(
+            random.choice(self.block_names), next(self.block_colors), self.grid_size
+        )
+        self.next_block = Tetrimino(
+            random.choice(self.block_names), next(self.block_colors), self.grid_size
+        )
 
         self.blocks = []
         self.stats = {"ticks": 0, "pieces_spawned": 0, "lines": 0}
@@ -272,7 +281,9 @@ class Tetris:
             if not self.grid.set_cell(gx, gy, block[1]):
                 print("Unable to set cell: ", gx, gy, block[1])
         self.current_block = self.next_block
-        self.next_block = self.get_random_piece()
+        self.next_block = Tetrimino(
+            random.choice(self.block_names), next(self.block_colors), self.grid_size
+        )
         self.render_next_block()
         self.update_grid()
         self.check_for_rows()
@@ -286,13 +297,11 @@ class Tetris:
         if full_rows:
             full_rows.sort()
             print("We found some full rows: ", full_rows)
-            self.stats["lines"] += len(full_rows)
             for row_index in full_rows:
                 del self.grid.grid[row_index]
                 new_row = list([None for x in range(self.grid.width)])
                 self.grid.grid.insert(0, new_row)
             self.update_grid()
-            # self.render_ui()
 
     def print_grid(self):
         for row in self.grid.grid:
